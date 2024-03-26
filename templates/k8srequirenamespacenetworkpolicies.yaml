@@ -1,0 +1,26 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequirenamespacenetworkpolicies
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequireNamespaceNetworkPolicies
+      validation:
+        legacySchema: false
+  targets:
+  - rego: |
+      package k8srequirenamespacenetworkpolicies
+
+      violation[{"msg": msg}] {
+        input.review.kind.kind == "Namespace"
+        input.review.operation != "CREATE"
+        not namespace_has_networkpolicy(input.review.object.metadata.name, data.inventory)
+        msg := sprintf("Namespace <%v> does not have a NetworkPolicy", [input.review.object.metadata.name])
+      }
+
+      namespace_has_networkpolicy(ns, inventory) {
+        inventory.namespace[ns][_].NetworkPolicy[_]
+      }
+    target: admission.k8s.gatekeeper.sh

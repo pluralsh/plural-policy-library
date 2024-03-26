@@ -1,0 +1,22 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8sblockprocessnamespacesharing
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sBlockProcessNamespaceSharing
+      validation:
+        legacySchema: false
+  targets:
+  - rego: |
+      package k8sblockprocessnamespacesharing
+
+      violation[{"msg": msg}] {
+        input.review.kind.group == ""
+        input.review.kind.kind == "Pod"
+        input.review.object.spec.shareProcessNamespace == true
+        msg := "Process namespace sharing is not allowed"
+      }
+    target: admission.k8s.gatekeeper.sh

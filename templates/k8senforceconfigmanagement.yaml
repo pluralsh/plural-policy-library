@@ -1,0 +1,68 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8senforceconfigmanagement
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sEnforceConfigManagement
+      validation:
+        legacySchema: false
+        openAPIV3Schema:
+          properties:
+            requireDriftPrevention:
+              default: false
+              description: Require Config Sync drift prevention to prevent config
+                drift.
+              type: boolean
+            requireRootSync:
+              default: false
+              description: Require a Config Sync `RootSync` object for cluster config
+                management.
+              type: boolean
+          type: object
+  targets:
+  - rego: |
+      package k8senforceconfigmanagement
+
+      violation[{"msg": msg}] {
+        input.review.kind.kind == "ConfigManagement"
+        input.review.kind.group == "configmanagement.gke.io"
+
+        # Audit Only, do not block as status is a derived value
+        input.review.operation != "UPDATE"
+        input.review.operation != "CREATE"
+        health := object.get(input.review.object.status, "healthy", false)
+        health == false
+        msg := "Config Management operator is unhealthy. Check operator logs for more information."
+      }
+
+      violation[{"msg": msg}] {
+        input.review.kind.kind == "ConfigManagement"
+        input.review.kind.group == "configmanagement.gke.io"
+
+        # Audit Only, do not block as preventDrift cannot be set directly
+        input.review.operation != "UPDATE"
+        input.review.operation != "CREATE"
+        object.get(object.get(input.review.object, "spec", {}), "preventDrift", false) == false
+        object.get(input.parameters, "requireDriftPrevention", false) == true
+        msg := "Config Sync admission webhook is not enabled.  Enable to prevent configuration drift."
+      }
+
+      violation[{"msg": msg}] {
+        input.review.kind.kind == "ConfigManagement"
+        input.review.kind.group == "configmanagement.gke.io"
+
+        # Audit Only, do not block as Config Sync is required to create a RootSync object
+        input.review.operation != "UPDATE"
+        input.review.operation != "CREATE"
+        not cluster_has_rootsync(input.review)
+        object.get(input.parameters, "requireRootSync", false) == true
+        msg := "No Config Sync RootSync object detected.  Create to enforce cluster Config Management."
+      }
+
+      cluster_has_rootsync(_) {
+        count(data.inventory.namespace[_][_].RootSync[_]) > 0
+      }
+    target: admission.k8s.gatekeeper.sh

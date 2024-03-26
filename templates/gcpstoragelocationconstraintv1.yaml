@@ -1,0 +1,59 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: gcpstoragelocationconstraintv1
+spec:
+  crd:
+    spec:
+      names:
+        kind: GCPStorageLocationConstraintV1
+      validation:
+        legacySchema: false
+        openAPIV3Schema:
+          properties:
+            exemptions:
+              description: A list of bucket names that are exempt from this constraint.
+              items:
+                type: string
+              type: array
+            locations:
+              description: A list of locations that a bucket is permitted to have.
+              items:
+                type: string
+              type: array
+          type: object
+  targets:
+  - rego: |
+      package gcpstoragelocationconstraintv1
+
+      import future.keywords.in
+
+      allowedLocation(reviewLocation) {
+        locations := input.parameters.locations[_]
+        contains(lower(reviewLocation), lower(locations))
+      }
+
+      exempt(reviewName) {
+        reviewName in input.parameters.exemptions
+      }
+
+      violation[{"msg": msg}] {
+        bucketName := input.review.object.metadata.name
+        not input.review.object.spec.location
+        msg := sprintf("Cloud Storage bucket <%v> must include a location", [bucketName])
+      }
+
+      violation[{"msg": msg}] {
+        bucketName := input.review.object.metadata.name
+        bucketLocation := input.review.object.spec.location
+        not allowedLocation(bucketLocation)
+        not exempt(bucketName)
+        msg := sprintf("Cloud Storage bucket <%v> uses a disallowed location <%v>, allowed locations are %v", [bucketName, bucketLocation, input.parameters.locations])
+      }
+
+      violation[{"msg": msg}] {
+        not input.parameters.locations
+        bucketName := input.review.object.metadata.name
+        msg := sprintf("No permitted locations for Cloud Storage bucket <%v>", [bucketName])
+      }
+    target: admission.k8s.gatekeeper.sh

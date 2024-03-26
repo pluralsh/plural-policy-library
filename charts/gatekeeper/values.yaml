@@ -1,0 +1,13 @@
+# Default values for gatekeeper.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+gatekeeper:
+  replicas: 3
+  revisionHistoryLimit: 10
+  auditInterval: 60
+  metricsBackends: ["prometheus"]
+  auditMatchKindOnly: false
+  constraintViolationsLimit: 20
+  auditFromCache: false
+  disableAudit: false
+  disableMutation: false
